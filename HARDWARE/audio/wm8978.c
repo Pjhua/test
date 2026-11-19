@@ -55,20 +55,24 @@ unsigned char Wm8978_Init(void)
 	WM_IIC_Init();//初始化IIC接口
 	res = WM8978_Write_Reg(0, 0);//软复位WM8978
 	if(res)	return 1;			 //发送指令失败,WM8978异常
+	/* 防上电爆音: 使能输出前先把耳机/喇叭置为静音(音量0会写mute位) */
+	WM8978_HPvol_Set(0, 0);
+	WM8978_SPKvol_Set(0);
 	//以下为通用设置
 	WM8978_Write_Reg(1, 0X1B);	 //R1,MICEN设置为1(MIC使能),BIASEN设置为1(模拟器工作),VMIDSEL[1:0]设置为:11(5K)
 	WM8978_Write_Reg(2, 0X1B0);	 //R2,ROUT1,LOUT1输出使能(耳机可以工作),BOOSTENR,BOOSTENL使能
-	WM8978_Write_Reg(3, 0X6C);	 //R3,LOUT2,ROUT2输出使能(喇叭工作),RMIX,LMIX使能	
+	WM8978_Write_Reg(3, 0X6C);	 //R3,LOUT2,ROUT2输出使能(喇叭工作),RMIX,LMIX使能
+	delay_ms(100);				 //等VMID偏置和输出耦合电容稳定, 再继续配置, 消除上电爆音
 	WM8978_Write_Reg(6, 0);		 //R6,MCLK由外部提供
 	WM8978_Write_Reg(43, 1<<4);	 //R43,INVROUT2反向,驱动喇叭
 	WM8978_Write_Reg(47, 1<<8);	 //R47设置,PGABOOSTL,左通道MIC获得20倍增益
 	WM8978_Write_Reg(48, 1<<8);	 //R48设置,PGABOOSTR,右通道MIC获得20倍增益
-	WM8978_Write_Reg(49, 1<<1);	 //R49,TSDEN,开启过热保护 
-	WM8978_Write_Reg(10, 1<<3);	 //R10,SOFTMUTE关闭,128x采样,最佳SNR 
+	WM8978_Write_Reg(49, 1<<1);	 //R49,TSDEN,开启过热保护
+	WM8978_Write_Reg(10, 1<<3);	 //R10,SOFTMUTE关闭,128x采样,最佳SNR
 	WM8978_Write_Reg(14, 1<<3);	 //R14,ADC 128x采样率
-	
-	WM8978_HPvol_Set(0, 0);		//耳机音量设置
-	WM8978_SPKvol_Set(50);		//喇叭音量设置
+
+	WM8978_HPvol_Set(0, 0);		//耳机保持静音
+	WM8978_SPKvol_Set(0);		//喇叭保持静音, 播放时由 mus_vol_service 渐入目标音量
 	WM8978_ADDA_Cfg(1, 0);		//开启DAC
 	WM8978_Input_Cfg(0, 0, 0);	//关闭输入通道
 	WM8978_Output_Cfg(1, 0);	//开启DAC输出   

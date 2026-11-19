@@ -1,0 +1,10 @@
+.\objects\heap_ccm.o: freeRTOS\Source\user\heap_ccm.c
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\FreeRTOS.h
+.\objects\heap_ccm.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\objects\heap_ccm.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\FreeRTOSConfig.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\projdefs.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\portable.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\deprecated_definitions.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\portable\RVDS\ARM_CM4F\portmacro.h
+.\objects\heap_ccm.o: .\freeRTOS\Source\include\mpu_wrappers.h

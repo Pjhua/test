@@ -2105,7 +2105,7 @@ void events_init_screen_note(lv_ui *ui)
 /* 扩展名 -> 文件类型图标 (复用主页面2的应用图标, 空格分隔, 大小写不敏感) */
 typedef struct {
     const char *exts;
-    const char *icon;
+    const void *icon;   /* 可为 "M:/xx.bin" 字符串或 &lv_image_dsc_t, lv_image_set_src 均支持 */
 } file_type_t;
 
 static const file_type_t file_types[] = {
@@ -2143,7 +2143,7 @@ static bool file_ext_in(const char *ext, const char *list)
 }
 
 /* 目录 → 设置图标; 文件 → 按扩展名取主页面2的应用图标; 其余 → 主图标 */
-static const char *file_icon_get(const char *name, bool is_dir)
+static const void *file_icon_get(const char *name, bool is_dir)
 {
     const char *ext;
     unsigned int i;

@@ -319,8 +319,7 @@ void mus_init(void)
     if (Wm8978_Init() == 0)
     {
         s_audio_ready = 1;
-        s_vol_applied = -1;          /* 让音量服务把当前目标值写入硬件 */
-        mus_vol_service();
+        s_vol_applied = 0;           /* 喇叭此时为静音(Wm8978_Init 置0), 由 mus_vol_service 渐入目标音量, 消除首次播放爆音 */
         printf("[music] WM8978 + I2S 初始化成功\r\n");
     }
     else

@@ -1,0 +1,16 @@
+.\objects\ffunicode.o: fatfs\source\ffunicode.c
+.\objects\ffunicode.o: fatfs\source\ff.h
+.\objects\ffunicode.o: fatfs\source\ffconf.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\FreeRTOS.h
+.\objects\ffunicode.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\objects\ffunicode.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\FreeRTOSConfig.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\projdefs.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\portable.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\deprecated_definitions.h
+.\objects\ffunicode.o: .\freeRTOS\Source\portable\RVDS\ARM_CM4F\portmacro.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\mpu_wrappers.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\semphr.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\queue.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\task.h
+.\objects\ffunicode.o: .\freeRTOS\Source\include\list.h

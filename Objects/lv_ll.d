@@ -1,0 +1,14 @@
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\lv_ll.c
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\lv_ll.h
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\../lv_conf_internal.h
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\../lv_conf_kconfig.h
+.\objects\lv_ll.o: .\LVGL\lvgl_src\../lvgl_src/lv_conf.h
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\lv_types.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stdbool.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\inttypes.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\limits.h
+.\objects\lv_ll.o: E:\Stm32\keil5\ARM\ARMCC\Bin\..\include\stdarg.h
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\../stdlib/lv_mem.h
+.\objects\lv_ll.o: LVGL\lvgl_src\src\misc\../stdlib/lv_string.h
