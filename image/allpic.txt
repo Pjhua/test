@@ -1,0 +1,12 @@
+目标文件:D:\Users\PJH\Desktop\font\pic\allpic.bin   大小:0x0001F9CC
+各部分大小如下:
+
+索引                        文件名                                           					 大小              偏移量            强制插入
+ 1      D:\Users\PJH\Desktop\font\pic\灯关.bin                              0x00003F50        0x00000000             否
+ 2      D:\Users\PJH\Desktop\font\pic\灯开.bin                              0x00003F50        0x00003F50             否
+ 3      D:\Users\PJH\Desktop\font\pic\风扇关.bin                            0x00003F50        0x00007EA0             否
+ 4      D:\Users\PJH\Desktop\font\pic\风扇开.bin                            0x00003E9C        0x0000BDF0             否
+ 5      D:\Users\PJH\Desktop\font\pic\蜂鸣器关.bin                          0x00003F50        0x0000FC8C             否
+ 6      D:\Users\PJH\Desktop\font\pic\蜂鸣器开.bin                          0x00003F50        0x00013BDC             否
+ 7      D:\Users\PJH\Desktop\font\pic\继电器.bin                            0x00003F50        0x00017B2C             否
+ 8      D:\Users\PJH\Desktop\font\pic\控制.bin                              0x00003F50        0x0001BA7C             否

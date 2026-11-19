@@ -1,0 +1,865 @@
+#include "stm32f4xx.h"
+#include "lcd.h"
+#include "lcd_init.h"
+#include "CST816S.h"
+#include "delay.h"
+#include "beep.h"
+#include "led.h"
+#include "fan.h"
+#include "relay.h"
+#include "sht3x.h"
+#include "mpu6050.h"
+#include "timer.h"
+#include "clock.h"
+#include "app.h"
+#include "pwm.h"
+#include "w2812.h"
+#include "sd_driver.h"
+#include "ff.h"
+#include "bmp.h"
+#include "scanf_dir.h"
+#include "wm8978.h"
+#include "wavplay.h"
+#include "malloc.h"
+#include "key.h"
+#include "ebook.h"
+#include "audioplay.h"
+
+/* ================================ 通用部分 ================================ */
+
+/* 左上角返回按钮区域（也是触摸热区） */
+#define BACK_X1 0
+#define BACK_Y1 0
+#define BACK_X2 55
+#define BACK_Y2 38
+
+
+/* 计算中英混合字符串的显示宽度，用于居中 */
+static u16 app_mix_width(u8 *s, u8 size)
+{
+    u16 w = 0;
+    while (*s != 0)
+    {
+        if ((s[0] & 0xF0) == 0xE0)
+        {
+            w += size;
+            s += 3;
+        }
+        else
+        {
+            w += size / 2;
+            s++;
+        }
+    }
+    return w;
+}
+
+/* 在屏幕左上角画一个带“返回”字样的可见按钮 */
+static void app_show_back(void)
+{
+    LCD_Fill(BACK_X1, BACK_Y1, BACK_X2, BACK_Y2, BLUE);           /* 蓝色按钮底 */
+    LCD_DrawRectangle(BACK_X1, BACK_Y1, BACK_X2, BACK_Y2, WHITE); /* 白色边框 */
+    LCD_ShowMixed_Flash(12, 11, (u8 *)"返回", WHITE, BLUE, 16,0);
+}
+
+/* 判断触摸点是否落在返回按钮上 */
+static u8 app_is_back(u16 x, u16 y)
+{
+    if (x <= BACK_X2 && y <= BACK_Y2)
+        return 1;
+    return 0;
+}
+
+/* 等手指松开，避免松开时误触其他界面 */
+static void app_wait_release(void)
+{
+    u16 x, y;
+    while (CST816S_GetPoint(&x, &y) == 0)
+    {
+        delay_ms(10);
+    }
+}
+
+/* 显示一个带符号的整数（MPU6050原始值有负数） */
+static void app_show_signed(u16 x, u16 y, short num, u8 size)
+{
+    u16 u;
+    if (num < 0)
+    {
+        LCD_ShowChar_Flash(x, y, '-', BLACK, WHITE, size, 0);
+        u = (u16)(-num);
+    }
+    else
+    {
+        LCD_ShowChar_Flash(x, y, ' ', BLACK, WHITE, size, 0);
+        u = (u16)num;
+    }
+    LCD_ShowIntNum_Flash(x + size / 2, y, u, 5, BLACK, WHITE, size);
+}
+
+/* ================================ 控制界面 ================================ */
+
+/* 4个设备按钮：2列2排 */
+#define BTN_W 100
+#define BTN_H 70
+static u16 ctl_bx[2] = {10, 130};
+static u16 ctl_by[2] = {60, 155};
+
+static u8 *ctl_name[7] = {"蜂鸣器", "LED灯", "风扇", "继电器", "风扇挡位", "舵机", "RGB灯"};
+static u8 ctl_st[7]; /* 每个设备当前的开关状态：0关 1开 */
+
+u8 angle = 0;
+u8 gear = 0;
+
+/* 重画一个设备按钮（开=绿色，关=灰色） */
+static void ctl_draw_btn(u8 i)
+{
+    u16 x, y, c, w;
+    u8 *st;
+    u8 page_pos = i % 4;
+    u8 buf[8] = {0};
+
+    x = ctl_bx[page_pos % 2];
+    y = ctl_by[page_pos / 2];
+    // c = ctl_st[i] ? GREEN : GRAY;
+    // st = ctl_st[i] ? (u8 *)"开" : (u8 *)"关";
+
+    if (i == 4)
+    {
+        sprintf((char *)buf, "%d挡", gear);
+        printf("%s\r\n", buf);
+        c = gear ? GREEN : GRAY;
+        st = gear % 4 ? buf : (u8 *)"关";
+    }
+    else if (i == 5)
+    {
+        sprintf((char *)buf, "%d度", angle);
+        printf("%s\r\n", buf);
+        c = angle ? GREEN : GRAY;
+        st = angle ? buf : (u8 *)"关";
+    }
+    else
+    {
+        c = ctl_st[i] % 2 ? GREEN : GRAY;
+        st = ctl_st[i] % 2 ? (u8 *)"开" : (u8 *)"关";
+    }
+
+    LCD_Fill(x, y, x + BTN_W - 1, y + BTN_H - 1, c);
+    LCD_DrawRectangle(x, y, x + BTN_W - 1, y + BTN_H - 1, BLACK);
+
+    w = app_mix_width(ctl_name[i], 24); /* 设备名居中 */
+    LCD_ShowMixed_Flash(x + (BTN_W - w) / 2, y + 6, ctl_name[i], BLACK, c, 24,0);
+
+    w = app_mix_width(st, 24); /* 开关状态居中 */
+    LCD_ShowMixed_Flash(x + (BTN_W - w) / 2, y + 40, st, BLACK, c, 24,0);
+}
+
+/* 按状态真正操作硬件 */
+static void ctl_apply(u8 i)
+{
+    switch (i)
+    {
+    case 0:
+        if (ctl_st[i] % 2)
+        {
+            BEEP_ON();
+        }
+        else
+        {
+            BEEP_OFF();
+        }
+        break;
+    case 1:
+        if (ctl_st[i] % 2)
+        {
+            LED_ON_ALL();
+        }
+        else
+        {
+            LED_OFF_ALL();
+        }
+        break;
+    case 2:
+        if (ctl_st[i] % 2)
+        {
+            fan_set_gear(1);
+        }
+        else
+        {
+            fan_set_gear(0);
+        }
+        break;
+    case 3:
+        if (ctl_st[i] % 2)
+        {
+            RELAY_ON();
+        }
+        else
+        {
+            RELAY_OFF();
+        }
+        break;
+    case 4:
+        gear = ctl_st[i] % 4;
+        fan_set_gear(gear);
+        break;
+    case 5:
+        angle = ctl_st[i] % 19 * 10;
+        sg90_set_angle(angle);
+        break;
+    case 6:
+        if (ctl_st[i] % 2)
+        {
+            w2812_reset();
+            w2812_send_color(RGB_LOW_RED);
+        }
+        else
+        {
+            w2812_reset();
+            w2812_send_color(BLACK);
+        }
+        break;
+    }
+}
+
+u8 ctl_page = 0;
+void ctl_show_page(u8 page)
+{
+    u8 idnex, i;
+    LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+    app_show_back();
+    LCD_ShowMixed_Flash(72, 7, (u8 *)"控制面板", BLACK, WHITE, 24,0);
+    for (i = 0; i < 4; i++)
+    {
+        idnex = page * 4 + i;
+        if (idnex >= 7)
+            break;
+        // ctl_st[idnex] = 0;
+        ctl_apply(idnex);
+        ctl_draw_btn(idnex);
+    }
+}
+
+void app_control(void)
+{
+    u16 x, y;
+    u8 i, r;
+
+    LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+    app_show_back();
+    LCD_ShowMixed_Flash(72, 7, (u8 *)"控制面板", BLACK, WHITE, 24,0);
+
+    /* 进入界面时所有设备先关闭，界面状态和硬件保持一致 */
+    for (i = 0; i < 4; i++)
+    {
+        ctl_st[i] = 0;
+        ctl_apply(i);
+        ctl_draw_btn(i);
+    }
+
+    while (1)
+    {
+        r = CST816S_GetPoint(&x, &y);
+        if (r == 0) /* 有手指按下 */
+        {
+            if (app_is_back(x, y))
+            {
+                app_wait_release();
+                return; /* 返回主界面 */
+            }
+
+            /* 先判断落在哪一列 */
+            if (x >= ctl_bx[0] && x < ctl_bx[0] + BTN_W)
+                i = 0;
+            else if (x >= ctl_bx[1] && x < ctl_bx[1] + BTN_W)
+                i = 1;
+            else
+                i = 0xFF;
+
+            /* 再判断落在哪一排 */
+            if (i != 0xFF)
+            {
+                if (y >= ctl_by[0] && y < ctl_by[0] + BTN_H)
+                    i = i; /* 第一排：编号0、1 */
+                else if (y >= ctl_by[1] && y < ctl_by[1] + BTN_H)
+                    i = i + 2; /* 第二排：编号2、3 */
+                else
+                    i = 0xFF;
+            }
+
+            if (i != 0xFF)
+            {
+                ctl_st[i] = !ctl_st[i]; /* 点击一次切换一次开关 */
+                ctl_apply(i);
+                ctl_draw_btn(i);
+            }
+            app_wait_release();
+        }
+        delay_ms(10);
+    }
+}
+
+void app_control_new(void)
+{
+    u16 x, y;
+    u8 i, r;
+    u16 start_x, last_x, last_y;
+    int dx;
+
+    ctl_show_page(0);
+
+    while (1)
+    {
+        // CST816S 的 INT 引脚只在手指刚按下、刚抬起等状态变化瞬间拉低，手指按住持续滑动时 INT 保持高电平
+        if (CST816S_Read(&x, &y) == 0) // 等到手指按下（INT触发瞬间能读到）
+        {
+            start_x = x;
+            last_x = x;
+            last_y = y;
+            delay_ms(20);
+            // 手指按住期间不看INT，直接I2C轮询，持续更新坐标，直到手指抬起
+            while (1)
+            {
+                r = CST816S_GetPoint(&x, &y);
+                if (r == 0) /* 有手指按下 */
+                {
+                    last_x = x; // 有手指，更新最后的x坐标
+                    last_y = y;
+                }
+                else if (r == 1)
+                {
+                    break; // 手指已抬起
+                }
+                delay_ms(10);
+            }
+
+            dx = (int)last_x - (int)start_x;
+            printf("slide dx:%d\r\n", dx);
+            if (dx < -50 && ctl_page < 1) // 向左滑动，显示下一页
+            {
+                ctl_page++;
+                ctl_show_page(ctl_page);
+            }
+            else if (dx > 50 && ctl_page > 0) // 向右滑动，显示上一页
+            {
+                ctl_page--;
+                ctl_show_page(ctl_page);
+            }
+            else // 移动距离很小，当作点击，按按下时的坐标判断点了哪个图标
+            {
+                if (app_is_back(last_x, last_y))
+                {
+                    app_wait_release();
+                    return; /* 返回主界面 */
+                }
+
+                /* 先判断落在哪一列 */
+                if (last_x >= ctl_bx[0] && last_x < ctl_bx[0] + BTN_W)
+                    i = 0;
+                else if (last_x >= ctl_bx[1] && last_x < ctl_bx[1] + BTN_W)
+                    i = 1;
+                else
+                    i = 0xFF;
+
+                /* 再判断落在哪一排 */
+                if (i != 0xFF)
+                {
+                    if (last_y >= ctl_by[0] && last_y < ctl_by[0] + BTN_H)
+                        i = i; /* 第一排：编号0、1 */
+                    else if (last_y >= ctl_by[1] && last_y < ctl_by[1] + BTN_H)
+                        i = i + 2; /* 第二排：编号2、3 */
+                    else
+                        i = 0xFF;
+                }
+                if (i != 0xFF)
+                {
+                    u8 idx = i + ctl_page * 4;
+                    if (idx < 7)
+                    {
+                        ctl_st[idx]++;
+                        ctl_apply(idx);
+                        ctl_draw_btn(idx);
+                    }
+                }
+                app_wait_release();
+            }
+        }
+        delay_ms(10);
+    }
+}
+
+/* ================================ 查看界面 ================================ */
+
+void app_look(void)
+{
+    Sht3x_TypeDef sht;
+    short ax, ay, az;
+    short gx, gy, gz;
+    u16 x, y;
+    u8 r;
+    u16 cnt = 0;
+
+    Sht3x_Init(); /* 软件IIC的PB6/PB7引脚初始化，MPU6050也用这组IIC */
+    Mpu6050_Init();
+
+    LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+    app_show_back();
+    LCD_ShowMixed_Flash(72, 7, (u8 *)"数据查看", BLACK, WHITE, 24,0);
+
+    /* 温湿度区域（24号字） */
+    LCD_ShowMixed_Flash(10, 55, (u8 *)"温度:", BLACK, WHITE, 24,0);
+    LCD_ShowMixed_Flash(10, 90, (u8 *)"湿度:", BLACK, WHITE, 24,0);
+    LCD_ShowChinese(140, 55, "℃", BLACK, WHITE, 24, 0);
+    LCD_ShowChar_Flash(140, 90, '%', BLACK, WHITE, 24, 0);
+
+    /* MPU6050区域（16号字） */
+    LCD_ShowString_Flash(10, 120, (u8 *)"MPU6050:", BLACK, WHITE, 16, 0);
+    LCD_ShowMixed_Flash(10, 140, (u8 *)"加速度X:", BLACK, WHITE, 16,0);
+    LCD_ShowMixed_Flash(10, 162, (u8 *)"加速度Y:", BLACK, WHITE, 16,0);
+    LCD_ShowMixed_Flash(10, 184, (u8 *)"加速度Z:", BLACK, WHITE, 16,0);
+    LCD_ShowMixed_Flash(10, 206, (u8 *)"陀螺仪X:", BLACK, WHITE, 16,0);
+    LCD_ShowMixed_Flash(10, 228, (u8 *)"陀螺仪Y:", BLACK, WHITE, 16,0);
+    LCD_ShowMixed_Flash(10, 250, (u8 *)"陀螺仪Z:", BLACK, WHITE, 16,0);
+
+    while (1)
+    {
+        if (cnt % 50 == 0) /* 约500ms刷新一次数据 */
+        {
+            if (Sht3x_Read_TemperatureHumidity(&sht) == 0)
+            {
+                LCD_ShowFloatNum1_Flash(75, 55, sht.temperature, 4, BLACK, WHITE, 24);
+                LCD_ShowFloatNum1_Flash(75, 90, sht.humidity, 4, BLACK, WHITE, 24);
+            }
+
+            Mpu6050_GetAccelerometer(&ax, &ay, &az);
+            Mpu6050_GetGyroscope(&gx, &gy, &gz);
+            app_show_signed(80, 140, ax, 16);
+            app_show_signed(80, 162, ay, 16);
+            app_show_signed(80, 184, az, 16);
+            app_show_signed(80, 206, gx, 16);
+            app_show_signed(80, 228, gy, 16);
+            app_show_signed(80, 250, gz, 16);
+        }
+
+        r = CST816S_GetPoint(&x, &y);
+        if (r == 0 && app_is_back(x, y))
+        {
+            app_wait_release();
+            return;
+        }
+
+        cnt++;
+        delay_ms(10);
+    }
+}
+
+/* ================================ 时钟界面 ================================ */
+
+void app_clock(void)
+{
+    char buf[24];
+    u16 x, y;
+    u8 r; //, last_sec
+    u32 cnt = 0;
+    u8 key;
+
+    timer7_init(9999, 8399); /* 定时器7：84MHz/8399/9999 = 1秒中断一次 */
+
+    LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, BLACK);
+    Clock_DrawFace(); /* 表盘只画一次 */
+    app_show_back();
+    LCD_ShowMixed_Flash(96, 7, (u8 *)"时钟", WHITE, BLACK, 24,0);
+
+    // last_sec = 0xFF;
+    while (1)
+    {
+        // time_handle(); /* 处理1秒走时 */
+
+        // if (g_datetime.sec != last_sec) /* 每秒更新一次 */
+        // {
+        // 	last_sec = g_datetime.sec;
+        // 	Clock_UpdateHands(); /* 刷新指针 */
+
+        // 	time_get_str(buf, sizeof(buf)); /* "2026-09-22 10:42:04" */
+        // 	buf[10] = 0;					/* 截出日期部分 */
+        // 	LCD_ShowString_Flash(80, 216, (u8 *)buf, WHITE, BLACK, 16, 0);
+        // 	LCD_ShowString_Flash(72, 240, (u8 *)&buf[11], YELLOW, BLACK, 24, 0);
+        // }
+
+        key = Scanf_Key();
+        if (key == KEY3_LONG)
+        {
+            esp8266_get_net_time();
+            time_set_from_str(g_net_datetime, g_net_weekday);
+        }
+        if (rtc_wakup_flag == 1)
+        {
+            rtc_wakup_flag = 0;
+            Clock_UpdateHands(); /* 刷新指针 */
+            sprintf(buf, "%02d-%02d-%02d %02d:%02d:%02d",
+                    RTC_DateStruct.RTC_Year + 2000,
+                    RTC_DateStruct.RTC_Month,
+                    RTC_DateStruct.RTC_Date,
+                    RTC_TimeStruct.RTC_Hours,
+                    RTC_TimeStruct.RTC_Minutes,
+                    RTC_TimeStruct.RTC_Seconds);
+            LCD_Fill(40, 216, 200, 232, BLACK);
+            LCD_ShowString_Flash(40, 216, (u8 *)buf, WHITE, BLACK, 16, 0);
+        }
+
+        r = CST816S_GetPoint(&x, &y);
+        if (r == 0 && app_is_back(x, y))
+        {
+            app_wait_release();
+            return;
+        }
+
+        cnt++;
+        delay_ms(10);
+    }
+}
+
+/* ================================ 相册界面 ================================ */
+#define ALBUM_DIR "0:/bmp"
+
+static FileNode *album_cur = NULL;   /* 当前显示的文件节点 */
+
+/* 扫描 ALBUM_DIR 目录：用 scanf_dir 的全局链表 list_head，过滤出 .bmp 文件节点 */
+static void album_scan(void)
+{
+    FileNode *p, *next;
+    char *ext;
+    u16 len;
+    FRESULT res;
+
+    /* 释放上一次的全局链表（list_head 是 scanf_dir.c 定义的全局变量） */
+    free_list(&list_head);
+
+    /* 递归扫描目录，结果存入全局 list_head */
+    res = recursive_read_dir(ALBUM_DIR, &list_head);
+    printf("[album] recursive_read_dir res=%d, list_head=%p\n", res, (void*)list_head);
+    if (list_head != NULL)
+    {
+        print_list(list_head);
+    }
+
+    /* 过滤：只保留 .bmp 文件节点，其余全部删除 */
+    for (p = list_head; p != NULL; p = next)
+    {
+        next = p->next;
+        if (!p->is_dir)
+        {
+            len = strlen(p->full_path);
+            if (len > 3)
+            {
+                /* len-3 跳过点号，指向 "bmp" 三个字母 */
+                ext = &p->full_path[len - 3];
+                if (!((ext[0] == 'b' || ext[0] == 'B') &&
+                        (ext[1] == 'm' || ext[1] == 'M') &&
+                        (ext[2] == 'p' || ext[2] == 'P')))
+                {
+                    list_remove_node(p);
+                }
+            }
+            else /* 文件名太短，不可能是 .bmp */
+            {
+                list_remove_node(p);
+            }
+        }
+    }
+    list_count(list_head); /* 过滤后重新统计 list_file_num / list_tail，并同步全局 list_head */
+    printf("[album] 过滤后 list_node_num=%d, list_file_num=%d\n", list_node_num, list_file_num);
+}
+
+/* 从完整路径中提取文件名（最后一段） */
+static const char *album_basename(const char *full_path)
+{
+    const char *p = strrchr(full_path, '/');
+    return p ? p + 1 : full_path;
+}
+
+/* 显示 album_cur 当前指向的 BMP 图片，居中显示 */
+static void album_show_current(void)
+{
+    FIL fp;
+    UINT br;
+    u32 width, height;
+    u16 x, y;
+
+    if (album_cur == NULL)
+        return;
+
+    /* BMP 头偏移：文件头 14 字节 + 信息头里宽在偏移 18，高在偏移 22 */
+    if (f_open(&fp, album_cur->full_path, FA_READ) != FR_OK)
+        return;
+    f_lseek(&fp, 18);
+    f_read(&fp, &width, 4, &br);    /* ciWidth (u32 little-endian) */
+    f_read(&fp, &height, 4, &br);   /* ciHeight (u32 little-endian) */
+    f_close(&fp);
+
+    x = (width < LCD_W) ? (LCD_W - width) / 2 : 0;
+    y = (height < LCD_H) ? (LCD_H - height) / 2 : 0;
+
+    LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+    bmp_decode_mini(x, y, album_cur->full_path);
+}
+
+/* 相册主界面：左滑下一张、右滑上一张、上滑返回主界面 */
+void app_album(void)
+{
+    s8 dir;
+    char cnt[16];
+    const char *name;
+
+    album_scan();
+    album_cur = list_first_file(list_head); /* 跳过目录节点，找第一个文件 */
+
+    if (album_cur == NULL || list_file_num == 0)
+    {
+        LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+        LCD_ShowMixed_Flash(60, 60, (u8 *)"相册", BLACK, WHITE, 24, 0);
+        LCD_ShowMixed_Flash(10, 100, (u8 *)"0:/bmp 目录下无 BMP 图片", BLACK, WHITE, 16, 0);
+        LCD_ShowMixed_Flash(50, 220, (u8 *)"上滑返回", BLACK, WHITE, 16, 0);
+
+        while (1)
+        {
+            dir = cst816s_get_swipe();
+            if (dir == SLI_UP)
+            {
+                free_list(&list_head);
+                return;
+            }
+            delay_ms(10);
+        }
+    }
+
+    album_show_current();
+
+    while (1)
+    {
+        dir = cst816s_get_swipe();
+        if (dir != 0)
+        {
+            if (dir == SLI_LEFT)       /* 左滑 → 下一张 */
+                album_cur = list_next_file(album_cur, 1);
+            else if (dir == SLI_RIGHT) /* 右滑 → 上一张 */
+                album_cur = list_next_file(album_cur, -1);
+            else if (dir == SLI_UP)  /* 上滑 → 返回主界面 */
+            {
+                free_list(&list_head);
+                return;
+            }
+
+            album_show_current();
+
+            /* 顶部信息条：左上角文件名，右上角页码 */
+            LCD_Fill(0, 0, LCD_W - 1, 16, WHITE);
+            name = album_basename(album_cur->full_path);
+            LCD_ShowMixed_Flash(2, 2, (u8 *)name, BLACK, WHITE, 12, 0);
+            {
+                u16 pos = 1;
+                FileNode *p;
+                for (p = list_first_file(list_head); p != NULL && p != album_cur;
+                        p = list_next_file(p, 1))
+                    pos++;
+                sprintf(cnt, "%d/%d", pos, list_file_num);
+            }
+            LCD_ShowMixed_Flash(LCD_W - 45, 2, (u8 *)cnt, BLACK, WHITE, 12, 0);
+        }
+        delay_ms(10);
+    }
+}
+
+
+/* ================================ 电子书界面 ================================ */
+
+/* cst816s_get_swipe 做手势判定：
+ *   左滑(dir=1)=上一页，右滑(dir=-1)=下一页，上滑(dir=2)=返回主界面
+ */
+void app_ebook(void)
+{
+    s8 dir;
+    u8 res;
+    u8 key;
+
+    LCD_Clear(WHITE);
+    /*先清空上次的链表（如重复扫描） */
+    free_list(&list_head);
+
+    /*递归扫描音乐目录，所有文件+目录都进链表 */
+    res = recursive_read_dir("0:/ebook", &list_head);
+    if (res == FR_OK)
+    {
+        print_list(list_head); // 打印扫描结果
+        list_count(list_head);
+    }
+    else
+    {
+        printf("扫描目录失败 (%d)\r\n", res);
+        while (1)
+            ;
+    }
+
+    printf("链表中共%d个节点,其中文件%d个\r\n", list_node_num, list_file_num);
+    FileNode *cur_node = list_first_file(list_head);
+
+    if (ebook_open(cur_node->full_path) != 0)
+    {
+        LCD_Fill(0, 0, LCD_W - 1, LCD_H - 1, WHITE);
+        LCD_ShowMixed_Flash(72, 7, (u8 *)"电子书", BLACK, WHITE, 24, 0);
+        LCD_ShowString_Flash(40, 120, (u8 *)"文件打开失败", RED, WHITE, 16, 0);
+        LCD_ShowString_Flash(60, 150, EBOOK_TXT_PATH, RED, WHITE, 12, 0);
+        LCD_ShowString_Flash(30, 250, (u8 *)"上滑返回", BLACK, WHITE, 16, 0);
+
+        while (1)
+        {
+            dir = cst816s_get_swipe();
+            if (dir == SLI_UP) return; /* 上滑退出 */
+            delay_ms(10);
+        }
+    }
+
+    LCD_ShowMixed_Flash(50, LCD_H - 16, (u8 *)"左滑N  右滑P  上滑返回",
+                        BLACK, WHITE, 12, 0);
+
+    while (1)
+    {
+        dir = cst816s_get_swipe();
+        key=key_scan();
+        if (dir != 0)
+        {
+            if (dir == SLI_LEFT)         /* 左滑 → 下一页 */
+            {
+                if (!ebook_next_page())
+                    LCD_ShowMixed_Flash(80, 240, (u8 *)"已是最后一页", BLACK, WHITE, 16, 0);
+            }
+            else if (dir ==SLI_RIGHT)   /* 右滑 → 上一页 */
+            {
+                if (!ebook_prev_page())
+                    LCD_ShowMixed_Flash(80, 240, (u8 *)"已是第一页", BLACK, WHITE, 16, 0);
+            }
+            else if (dir == SLI_UP)    /* 上滑 → 返回主界面 */
+            {
+                ebook_close();
+                return;
+            }
+            LCD_ShowMixed_Flash(50, LCD_H - 16,
+                                (u8 *)"左滑N  右滑P  上滑返回", BLACK, WHITE, 12, 0);
+        }
+        if(key==KEY1_PRE)
+        {
+            printf("KEY1 上一本\r\n");
+            cur_node = list_next_file(cur_node, -1);
+        }
+        else if(key==KEY3_PRE)
+        {
+            printf("KEY3 下一本\r\n");
+            cur_node = list_next_file(cur_node, 1);
+        }
+        else
+        {
+            continue;
+        }
+        ebook_open(cur_node->full_path);
+		            LCD_ShowMixed_Flash(50, LCD_H - 16,
+                                (u8 *)"左滑N  右滑P  上滑返回", BLACK, WHITE, 12, 0);
+        delay_ms(10);
+    }
+}
+
+/* ================================ 音乐界面 ================================ */
+
+/* 辅助：判断字符串后缀是否为 .wav / .WAV */
+static u8 is_wav_suffix(const char *fname)
+{
+    u16 len = strlen(fname);
+    if (len < 4)
+        return 0;
+    return (strcmp(fname + len - 4, ".wav") == 0 ||
+            strcmp(fname + len - 4, ".WAV") == 0);
+}
+
+/* 辅助：从完整路径中提取纯文件名（找最后一个 '/' 之后的部分） */
+static const char *extract_name(const char *full_path)
+{
+    const char *p = strrchr(full_path, '/');
+    return p ? p + 1 : full_path;
+}
+
+/*
+ * 用 scanf_dir 的 list_remove_node 遍历链表，
+ * 把目录节点 (is_dir==1) 和非 .wav 文件节点全部摘除释放，
+ * 保留下来的链表即为纯 wav 播放列表。
+ * 注意：调用前先 free_list(&list_head) 清空旧链表。
+ */
+static void filter_wav_only(FileNode *head)
+{
+    FileNode *cur = head;
+    FileNode *next;
+
+    while (cur != NULL)
+    {
+        next = cur->next; // 先记住后继，因为 remove 会改变 cur->next
+        /* 目录节点 → 摘除；非 wav 文件 → 摘除；只保留 .wav */
+        if (cur->is_dir || !is_wav_suffix(cur->full_path))
+        {
+            list_remove_node(cur);
+        }
+        cur = next;
+    }
+    /* 过滤后需要重新统计 */
+    list_count(list_head);
+}
+
+void app_music(void)
+{
+    u8 res;
+    LCD_Clear(WHITE);
+    /*先清空上次的链表（如重复扫描） */
+    free_list(&list_head);
+
+    /*递归扫描音乐目录，所有文件+目录都进链表 */
+    res = recursive_read_dir("0:/music", &list_head);
+    if (res == FR_OK)
+    {
+        print_list(list_head); // 打印扫描结果
+        list_count(list_head);
+    }
+    else
+    {
+        printf("扫描目录失败 (%d)\r\n", res);
+        while (1)
+            ;
+    }
+    /*只保留 .wav 文件节点，去掉目录和其他后缀 */
+    filter_wav_only(list_head);
+
+    if (list_head == NULL || list_file_num == 0)
+    {
+        printf("未在 0:/music 下找到任何 wav 文件\r\n");
+        while (1)
+            ;
+    }
+    printf("链表中共%d个节点,其中文件%d个\r\n", list_node_num, list_file_num);
+    FileNode *cur_node = list_first_file(list_head);
+
+    while (1)
+    {
+        printf("播放：%s\r\n", extract_name(cur_node->full_path));
+        res = Wav_PlaySong((unsigned char *)cur_node->full_path);
+        if (res == KEY1_PRE)
+        {
+            printf("KEY1 上一首\r\n");
+            cur_node = list_next_file(cur_node, -1);
+        }
+        else if (res == 5)
+        {
+            return;
+        }
+        else
+        {
+            printf("%s\r\n", res == KEY3_PRE ? "KEY3 下一首" : "自然结束，下一首");
+            cur_node = list_next_file(cur_node, 1);
+        }
+    }
+}

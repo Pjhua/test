@@ -1,0 +1,11 @@
+*** Using Compiler 'V5.06 update 6 (build 750)', folder: 'E:\Stm32\keil5\ARM\ARMCC\Bin'
+Build target 'Target 1'
+compiling main.c...
+linking...
+.\Objects\智慧生活.axf: Error: L6200E: Symbol gear multiply defined (by app.o and main.o).
+Not enough information to list image symbols.
+Not enough information to list load addresses in the image map.
+Finished: 2 information, 0 warning and 1 error messages.
+".\Objects\智慧生活.axf" - 1 Error(s), 0 Warning(s).
+Target not created.
+Build Time Elapsed:  00:00:20

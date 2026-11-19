@@ -1,0 +1,301 @@
+#include "stm32f4xx.h" // Device header
+#include "led.h"
+#include "key.h"
+#include "beep.h"
+#include "relay.h"
+#include "fan.h"
+#include "delay.h"
+#include "multi_button.h"
+#include "usart1.h"
+#include "usart2.h"
+#include "usart3.h"
+#include "esp8266.h"
+#include "cJSON.h"
+#include "exti.h"
+#include "timer.h"
+#include "lcd_init.h"
+#include "lcd.h"
+#include "w25qxx.h"
+#include "sht3x.h"
+#include "mlx9061x.h"
+#include "mpu6050.h"
+#include "inv_mpu.h"
+#include <math.h>
+#include "CST816S.h"
+#include "app_gui.h"
+#include "app.h"
+#include "dma.h"
+#include "adc.h"
+#include "iwdg.h"
+#include "wwdg.h"
+#include "rtc.h"
+#include "pwm.h"
+#include "capture.h"
+#include "w2812.h"
+#include "sd_driver.h"
+#include "ff.h"
+#include "ebook.h"
+#include "bmp.h"
+#include "scanf_dir.h"
+#include "wm8978.h"
+#include "wavplay.h"
+#include "malloc.h"
+#include "audioplay.h"
+#include "lv_port_disp_template.h"
+#include "lv_port_indev_template.h"
+#include "gui_guider.h"
+#include "custom.h"
+
+
+void is_loadfont(void);
+void fatfs_test(void);
+void lv_example_label_3(void);
+void lv_example_image_1(void);
+
+#define RES_FLAG_SECTOR 570        // 烧录标志存放的扇区（资源区占用0~601，紧跟其后）
+#define RES_FLAG_ADDR (570 * 4096) // 烧录标志的字节地址
+
+lv_ui guider_ui;
+
+int main()
+{
+    u8 ret = 1;
+    volatile u32 uwADCxConvertedVoltage = 0;
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2); // NVIC分组
+    led_init();
+    key_init();
+    beep_init();
+    relay_init();
+    fan_init();
+    delay_init(168);
+    usart1_init(115200);
+    usart2_init(115200);
+    usart3_init(115200);
+    EXTI_Config();
+    timer6_init(2, 42);
+    timer7_init(10000, 8400);
+    timer2_init(2000, 8400);
+    W25qxx_Init();
+    // is_loadfont();
+    if (key_scan())
+    {
+        W25qxx_fatfs_DownloadFile(0, 239, "0:/font/myFont_simkai16.bin");
+    }
+    ret = mpu_dmp_init();
+    if (ret != 0)
+    {
+        printf("mpu6050初始化失败\r\n");
+    }
+    rtc_init();
+    sg90_init();
+    fan_pwm_init();
+    // led_pwm_init();
+    // bl_pwm_init();
+    // key_capture_init();
+    sr04_init();
+    w2812_init();
+    // RgbDma_Init();
+    my_mem_init(SRAMIN); // 内存管理
+    my_mem_init(SRAMCCM);
+
+    ret = SD_Initialize();
+    if (ret == 0)
+    {
+        printf("SD卡初始化成功\r\n");
+    }
+    else
+    {
+        printf("SD卡初始化失败\r\n");
+    }
+    FATFS fs;
+    FRESULT res;
+    // 1.挂载
+    res = f_mount(&fs, "0", 0);
+    if (res == FR_OK)
+    {
+        printf("挂载成功\r\n");
+    }
+    else
+    {
+        printf("挂载失败\r\n");
+    }
+
+    
+    /*lvgl*/
+    lv_init();
+    timer1_lvgl_init();   // lvgl心跳
+    lv_port_disp_init();  // lvgl显示
+    lv_port_indev_init(); // lvgl输入
+	lv_fs_fatfs_init();
+	
+    lv_example_image_1();
+//     setup_ui(&guider_ui);
+//     custom_init(&guider_ui);
+
+    while (1)
+    {
+        lv_task_handler();
+        delay_ms(10);
+    }
+
+#if 0
+    /* 旧版未使用代码（已停用，留存备查）：
+     * 1) Wm8978 音频初始化 + WM8978_SPKvol_Set：LVGL 音乐屏接入播放功能时再启用；
+     * 2) FATFS 挂载：相册/电子书等文件功能使用；
+     * 3) gui_init()：旧桌面系统入口（app/app_gui.c + app.c），当前界面由 GUI Guider 生成。
+     * 启用方法：删除上方 #if 0 与下方 #endif 两行即可恢复原代码。 */
+    Wm8978_Init();
+    Wav_I2sDmaTx_Callback();
+    WM8978_SPKvol_Set(32);
+
+    // ebook_demo();
+
+
+    gui_init();
+
+    ADC_Config();
+#if ADC_USE_DMA
+    ADC_SoftwareStartConv(ADC3);
+#endif
+#endif /* #if 0 结束：以下 printf/死循环原为不可达代码，随旧初始化一并停用 */
+    printf("hello\r\n");
+
+    while (1)
+    {
+    }
+}
+/*=======================================================================================================*/
+
+void lv_example_label_3(void)
+{
+    lv_obj_t *cz_label = lv_label_create(lv_screen_active());
+    lv_obj_set_pos(cz_label, 0, 20);
+    lv_label_set_text(cz_label,
+                      "嵌入式系统(Embedded System),\n是一种嵌入机械或电气系统内部、具有专一功能和实时计算性能的计算机系统。");
+    lv_obj_set_width(cz_label, 200);
+    //lv_obj_align(cz_label, LV_ALIGN_BOTTOM_LEFT, 5, -5);
+}
+
+void lv_example_image_1(void)
+{
+    lv_obj_t * img1 = lv_image_create(lv_screen_active());
+    lv_image_set_src(img1, "0:/ICOS/app/back_240280.bmp");
+	lv_obj_set_pos(img1,0,0);
+	    lv_obj_t * img2 = lv_image_create(lv_screen_active());
+    lv_image_set_src(img2, "0:/ICOS/app/back_240280.bmp");
+	lv_obj_set_pos(img2,0,0);
+	    lv_obj_t * img3 = lv_image_create(lv_screen_active());
+    lv_image_set_src(img3, "0:/ICOS/app/back_240280.bmp");
+	lv_obj_set_pos(img3,0,0);
+	    lv_obj_t * img4 = lv_image_create(lv_screen_active());
+    lv_image_set_src(img4, "0:/ICOS/app/back_240280.bmp");
+	lv_obj_set_pos(img4,0,0);
+	    lv_obj_t * img5 = lv_image_create(lv_screen_active());
+    lv_image_set_src(img5, "0:/ICOS/app/back_240280.bmp");
+	lv_obj_set_pos(img5,0,0);
+
+
+}
+
+
+/*=======================================================================================================*/
+void is_loadfont(void)
+{
+    u8 flag = 0;
+    u8 magic = 0xA5; // 烧录标志内容
+    W25qxx_ReadDatas(&flag, RES_FLAG_ADDR, 1);
+    if (key_scan() || flag != magic) //
+    {
+
+#if 0 // 串口助手烧录字库
+        printf("\r\n检测到字库和图片未烧录,请通过串口1发送 allResource.bin 进行烧录！\r\n");
+        W25qxx_Usart1_DownloadFile(0, 570); // 字库+图片--烧录 allResource.bin（2334184字节，需570个扇区）
+#else // 文件系统烧录字库
+        W25qxx_fatfs_DownloadFile(0, 570, "0:/font/allResource.bin");
+#endif
+        // 烧录完成，擦除标志扇区并写入烧录标志
+        W25qxx_EraseSector(RES_FLAG_SECTOR);
+        W25qxx_WritePage(&magic, RES_FLAG_ADDR, 1);
+        // 读回检查标志是否写入成功
+        flag = 0;
+        W25qxx_ReadDatas(&flag, RES_FLAG_ADDR, 1);
+        if (flag == magic)
+        {
+            printf("烧录标志写入成功，下次上电将直接进入主界面。\r\n");
+        }
+        else
+        {
+            printf("警告：烧录标志写入失败！\r\n");
+        }
+    }
+    else
+    {
+        printf("字库和图片已烧录，直接进入主界面。\r\n");
+    }
+}
+
+/*=======================================================================================================*/
+
+void fatfs_test(void)
+{
+    u8 ret;
+    FATFS fs;
+    FIL fp;
+    UINT br, bw;
+    u8 buff[32];
+    u8 str[] = "hello 12345678";
+
+    ret = f_mount(&fs, "0:", 1);
+    if (ret == FR_OK)
+    {
+        printf("挂载成功\r\n");
+    }
+    else
+    {
+        printf("挂载失败\r\n");
+        return;
+    }
+    ret = f_open(&fp, "202610191706.txt", FA_CREATE_ALWAYS | FA_WRITE | FA_READ);
+    if (ret == FR_OK)
+    {
+        printf("打开文件成功\r\n");
+    }
+    else
+    {
+        printf("打开文件失败\r\n");
+        return;
+    }
+    f_write(&fp, str, sizeof(str), &bw);
+    if (ret == FR_OK)
+    {
+        printf("写入文件成功,写入了%d字节\r\n", bw);
+    }
+    else
+    {
+        printf("写入文件失败\r\n");
+        return;
+    }
+    f_close(&fp);
+    // 重新打开文件读取内容
+    ret = f_open(&fp, "202610191706.txt", FA_READ);
+    if (ret == FR_OK)
+    {
+        printf("重新打开文件成功\r\n");
+    }
+    else
+    {
+        printf("重新打开文件失败\r\n");
+        return;
+    }
+    ret = f_read(&fp, buff, sizeof(buff), &br);
+    if (ret == FR_OK && br != 0)
+    {
+        printf("读取文件成功,内容为:%s,字节数:%d\r\n", buff, br);
+    }
+    else
+    {
+        printf("读取文件失败\r\n");
+        return;
+    }
+    f_close(&fp);
+}

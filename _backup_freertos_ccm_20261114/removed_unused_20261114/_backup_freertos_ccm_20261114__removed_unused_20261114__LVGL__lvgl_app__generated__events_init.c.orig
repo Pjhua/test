@@ -1,0 +1,817 @@
+/*
+ * Copyright 2026 NXP
+ * NXP Proprietary. This software is owned or controlled by NXP and may only be used strictly in
+ * accordance with the applicable license terms. By expressly accepting such terms or by downloading, installing,
+ * activating and/or otherwise using the software, you are agreeing that you have read, and that you agree to
+ * comply with and are bound by, such license terms.  If you do not agree to be bound by the applicable license
+ * terms, then you may not retain, install, activate or otherwise use the software.
+ */
+
+#include "events_init.h"
+#include <stdio.h>
+#include "lvgl.h"
+#include "led.h"
+#include "beep.h"
+#include "relay.h"
+#include "pwm.h"
+#include "w2812.h"
+#include "sht3x.h"
+#include "mpu6050.h"
+#include "adc.h"
+#include "inv_mpu.h"
+
+#if LV_USE_GUIDER_SIMULATOR && LV_USE_FREEMASTER
+#include "freemaster_client.h"
+#endif
+
+static lv_app ctrl_state = {0, 0, 0, 0, 0, 0, 0, 1, 128, 128, 128};
+static unsigned int ctrl_rgb_color = 0;
+
+static lv_timer_t *s_app_timer = NULL;
+
+static void screen_main_1_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_LEFT:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_2, guider_ui.screen_main_2_del, &guider_ui.screen_main_1_del, setup_scr_screen_main_2, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        case LV_DIR_RIGHT:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_2, guider_ui.screen_main_2_del, &guider_ui.screen_main_1_del, setup_scr_screen_main_2, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_app_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_app, guider_ui.screen_app_del, &guider_ui.screen_main_1_del, setup_scr_screen_app, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_cal_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_cal, guider_ui.screen_cal_del, &guider_ui.screen_main_1_del, setup_scr_screen_cal, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_clk_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_clk, guider_ui.screen_clk_del, &guider_ui.screen_main_1_del, setup_scr_screen_clk, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_music_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_music, guider_ui.screen_music_del, &guider_ui.screen_main_1_del, setup_scr_screen_music, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_ebook_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_ebook, guider_ui.screen_ebook_del, &guider_ui.screen_main_1_del, setup_scr_screen_ebook, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_1_imgbtn_look_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_look, guider_ui.screen_look_del, &guider_ui.screen_main_1_del, setup_scr_screen_look, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_main_1(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_main_1, screen_main_1_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_app, screen_main_1_imgbtn_app_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_cal, screen_main_1_imgbtn_cal_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_clk, screen_main_1_imgbtn_clk_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_music, screen_main_1_imgbtn_music_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_ebook, screen_main_1_imgbtn_ebook_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_1_imgbtn_look, screen_main_1_imgbtn_look_event_handler, LV_EVENT_ALL, ui);
+}
+
+static void screen_main_2_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_LEFT:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_main_2_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        case LV_DIR_RIGHT:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_main_2_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_main_2_imgbtn_pic_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_pic, guider_ui.screen_pic_del, &guider_ui.screen_main_2_del, setup_scr_screen_pic, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_main_2(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_main_2, screen_main_2_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_main_2_imgbtn_pic, screen_main_2_imgbtn_pic_event_handler, LV_EVENT_ALL, ui);
+}
+
+
+
+
+static void screen_app_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_app_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+
+    default:
+        break;
+    }
+}
+
+static void screen_app_roller_fan_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+    u8 i;
+    switch (code)
+    {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        i = lv_roller_get_selected(obj);
+        ctrl_state.fan = i;
+        fan_set_gear(i);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led3_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t *status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        ctrl_state.led3 = status;
+        LED3 = !status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led2_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t *status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        ctrl_state.led2 = status;
+        LED2 = !status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led1_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t *status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        ctrl_state.led1 = status;
+        LED1 = !status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_beep_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t *status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        ctrl_state.beep = status;
+        BEEP = status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_relay_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t *status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        ctrl_state.relay = status;
+        RELAY = status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_roller_sg90_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+
+    switch (code)
+    {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        u8 i = lv_roller_get_selected(obj);
+        ctrl_state.sg90 = i;
+        printf("sg90:%d\r\n", ctrl_state.sg90);
+        sg90_set_angle(i * 45);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/* 软件模拟WS2812时序发送一帧：前 rgb_count 个灯珠显示 ctrl_rgb_color，其余熄灭 */
+static void screen_ctrl_rgb_apply(void)
+{
+    unsigned char i;
+
+    __disable_irq(); /* 关中断，防止LVGL心跳等中断打断WS2812时序 */
+    w2812_reset();
+    for (i = 0; i < Pixel_NUM; i++)
+    {
+        if (i < ctrl_state.rgb_count)
+            w2812_send_color(ctrl_rgb_color);
+        else
+            w2812_send_color(RGB_BLACK);
+    }
+    __enable_irq();
+}
+
+void screen_app_rgb_update(void)
+{
+    int r = lv_slider_get_value(guider_ui.screen_app_slider_R);
+    int g = lv_slider_get_value(guider_ui.screen_app_slider_G);
+    int b = lv_slider_get_value(guider_ui.screen_app_slider_B);
+
+    lv_obj_set_style_bg_color(guider_ui.screen_app_label_RGB_color, lv_color_make((u8)r, (u8)g, (u8)b), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_label_set_text_fmt(guider_ui.screen_app_label_RGB_R, "R:%d", r);
+    lv_label_set_text_fmt(guider_ui.screen_app_label_RGB_G, "G:%d", g);
+    lv_label_set_text_fmt(guider_ui.screen_app_label_RGB_B, "B:%d", b);
+
+    ctrl_rgb_color = ((unsigned int)r << 16) | ((unsigned int)g << 8) | (unsigned int)b;
+    ctrl_state.red = (unsigned char)r;
+    ctrl_state.green = (unsigned char)g;
+    ctrl_state.blue = (unsigned char)b;
+
+    screen_ctrl_rgb_apply();
+}
+
+static void screen_app_slider_R_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_RELEASED:
+    {
+        screen_app_rgb_update();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_slider_G_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_RELEASED:
+    {
+        screen_app_rgb_update();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_slider_B_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_RELEASED:
+    {
+        screen_app_rgb_update();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_roller_RGB_NUM_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+    switch (code)
+    {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        ctrl_state.rgb_count = lv_roller_get_selected(obj);
+        screen_app_rgb_update();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_app(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_app, screen_app_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_roller_fan, screen_app_roller_fan_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_sw_led3, screen_app_sw_led3_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_sw_led2, screen_app_sw_led2_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_sw_led1, screen_app_sw_led1_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_sw_beep, screen_app_sw_beep_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_sw_relay, screen_app_sw_relay_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_roller_sg90, screen_app_roller_sg90_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_slider_R, screen_app_slider_R_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_slider_G, screen_app_slider_G_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_slider_B, screen_app_slider_B_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_app_roller_RGB_NUM, screen_app_roller_RGB_NUM_event_handler, LV_EVENT_ALL, ui);
+
+    if (ctrl_state.led1)
+        lv_obj_add_state(ui->screen_app_sw_led1, LV_STATE_CHECKED);
+    if (ctrl_state.led2)
+        lv_obj_add_state(ui->screen_app_sw_led2, LV_STATE_CHECKED);
+    if (ctrl_state.led3)
+        lv_obj_add_state(ui->screen_app_sw_led3, LV_STATE_CHECKED);
+    if (ctrl_state.beep)
+        lv_obj_add_state(ui->screen_app_sw_beep, LV_STATE_CHECKED);
+    lv_roller_set_selected(ui->screen_app_roller_fan, ctrl_state.fan, LV_ANIM_OFF);
+    lv_roller_set_selected(ui->screen_app_roller_sg90, ctrl_state.sg90, LV_ANIM_OFF);
+    lv_roller_set_selected(ui->screen_app_roller_RGB_NUM, ctrl_state.rgb_count, LV_ANIM_OFF);
+    lv_slider_set_value(ui->screen_app_slider_R, ctrl_state.red, LV_ANIM_OFF);
+    lv_slider_set_value(ui->screen_app_slider_G, ctrl_state.green, LV_ANIM_OFF);
+    lv_slider_set_value(ui->screen_app_slider_B, ctrl_state.blue, LV_ANIM_OFF);
+
+    /* 同步硬件（上面设置控件可能已触发事件，这里再执行一次保证一致） */
+    LED1 = !ctrl_state.led1;
+    LED2 = !ctrl_state.led2;
+    LED3 = !ctrl_state.led3;
+    BEEP = ctrl_state.beep;
+    RELAY = ctrl_state.relay;
+
+    fan_set_gear((ctrl_state.fan));
+    sg90_set_angle(ctrl_state.sg90 * 45);
+    screen_app_rgb_update(); /* 恢复R/G/B标签、预览颜色并刷新RGB灯 */
+}
+
+static void screen_cal_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_cal_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_cal(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_cal, screen_cal_event_handler, LV_EVENT_ALL, ui);
+}
+
+static void screen_clk_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_clk_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_clk(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_clk, screen_clk_event_handler, LV_EVENT_ALL, ui);
+}
+
+static void screen_ebook_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_ebook_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_ebook(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_ebook, screen_ebook_event_handler, LV_EVENT_ALL, ui);
+}
+
+
+/* screen_sms 数据刷新定时器回调
+   每 500ms 读一次传感器 + 设备状态，更新所有 bar / label / LED 控件 */
+static void screen_look_refresh_timer_cb(lv_timer_t *timer)
+{
+    lv_ui *ui = (lv_ui *)lv_timer_get_user_data(timer);
+    Sht3x_TypeDef sht3;
+    float pitch_f, roll_f, yaw_f;
+    uint16_t adc_light;
+    uint32_t light_mv;
+    uint8_t light_pct;
+    int servo_deg;
+    int fan_pct;
+
+    /* ---- 温湿度：SHT30，共用 MPU6050 的 PB6/PB7 软件IIC ----
+       只显示整数，绕开 lv_sprintf_builtin.c 的 %f 兼容性问题 */
+    if (Sht3x_Read_TemperatureHumidity(&sht3) == 0)
+    {
+        int t = (int)(sht3.temperature + (sht3.temperature >= 0 ? 0.5 : -0.5));
+        int h = (int)((double)sht3.humidity + (sht3.humidity >= 0 ? 0.5 : -0.5));
+        if (t < 0) t = 0;
+        if (t > 50) t = 50;
+        lv_bar_set_value(ui->screen_look_bar_temp, t * 100 / 50, LV_ANIM_ON);
+        lv_label_set_text_fmt(ui->screen_look_label_temp_vol, "%d度", t);
+
+
+        if (h < 0) h = 0;
+        if (h > 100) h = 100;
+        lv_bar_set_value(ui->screen_look_bar_hum, h, LV_ANIM_ON);
+        lv_label_set_text_fmt(ui->screen_look_label_hum_vol, "%d%%", h);
+    }
+    /* ---- 光照：光敏 ADC3_Ch10 + 分压计算 ---- */
+    adc_light = ADC_Filter(10, LIGHT_CH_IDX);
+    light_mv  = (uint32_t)adc_light * 3300 / 4096;
+    light_pct = Get_LightIntensity(light_mv);
+    lv_bar_set_value(ui->screen_look_bar_lig, light_pct, LV_ANIM_ON);
+    lv_label_set_text_fmt(ui->screen_look_label_lig_vol, "%d%%", light_pct);
+
+    /* ---- 风扇：读设备状态 ---- */
+    fan_pct = ctrl_state.fan;
+    lv_bar_set_value(ui->screen_look_bar_gear, fan_pct, LV_ANIM_ON);
+    lv_label_set_text_fmt(ui->screen_look_label_gear_vol, "%d档", ctrl_state.fan);
+
+    /* ---- 舵机：读设备状态 ---- */
+    servo_deg = ctrl_state.sg90 * 45;
+    lv_bar_set_value(ui->screen_look_bar_angle, servo_deg, LV_ANIM_ON);
+    lv_label_set_text_fmt(ui->screen_look_label_angle_vol, "%d度", servo_deg);
+
+    /* ---- 陀螺仪：用 MPU6050 硬件 DMP 姿态解算 ----
+       mpu_dmp_get_data 内部融合了加速度计 + 陀螺仪 6 轴数据，
+       输出的 pitch/roll/yaw 是已经融合好的角度（不需要软件 atan2）。
+       ⚠ 注意：MPU6050 没有磁力计，yaw 只能靠陀螺仪积分，长期会飘，
+         但屏幕显示够用；pitch/roll 因为有加速度计做参考，比较准。 */
+    u8 g = mpu_dmp_get_data(&pitch_f, &roll_f, &yaw_f);
+static int dbg = 0;
+if (++dbg <= 20) printf("get=%d p=%.1f\r\n", g, pitch_f);
+if (g == 0) 
+    {
+        int p10, r10, y10;
+        int pi, pd, ri, rd, yi, yd;
+        p10 = (int)(pitch_f * 10.0f + (pitch_f >= 0 ? 0.5f : -0.5f));
+        r10 = (int)(roll_f  * 10.0f + (roll_f  >= 0 ? 0.5f : -0.5f));
+        y10 = (int)(yaw_f   * 10.0f + (yaw_f   >= 0 ? 0.5f : -0.5f));
+        pi = p10 / 10;
+        pd = (p10 < 0 ? -p10 : p10) % 10;
+        ri = r10 / 10;
+        rd = (r10 < 0 ? -r10 : r10) % 10;
+        yi = y10 / 10;
+        yd = (y10 < 0 ? -y10 : y10) % 10;
+        if (p10 < 0) {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_x, "-%d.%d", -pi, pd);
+        }
+        else         {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_x,  "%d.%d",  pi, pd);
+        }
+        if (r10 < 0) {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_y,  "-%d.%d", -ri, rd);
+        }
+        else         {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_y,   "%d.%d",  ri, rd);
+        }
+        if (y10 < 0) {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_z,   "-%d.%d", -yi, yd);
+        }
+        else         {
+            lv_label_set_text_fmt(ui->screen_look_label_mpu_z,    "%d.%d",  yi, yd);
+        }
+    }
+}
+
+static void screen_look_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_ui *ui = (lv_ui *)lv_event_get_user_data(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_look_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            if (s_app_timer)
+            {
+                lv_timer_del(s_app_timer);
+                s_app_timer=NULL;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    case LV_EVENT_SCREEN_LOADED:
+    {
+        if (!s_app_timer)
+            s_app_timer=lv_timer_create(screen_look_refresh_timer_cb, 500, ui);
+        break;
+    }
+    case LV_EVENT_SCREEN_UNLOADED:
+    {
+        if (s_app_timer)
+        {
+            lv_timer_del(s_app_timer);
+            s_app_timer=NULL;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_look(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_look, screen_look_event_handler, LV_EVENT_ALL, ui);
+}
+
+static void screen_music_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_music_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_music(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_music, screen_music_event_handler, LV_EVENT_ALL, ui);
+}
+
+static void screen_pic_event_handler(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code)
+    {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch (dir)
+        {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_2, guider_ui.screen_main_2_del, &guider_ui.screen_pic_del, setup_scr_screen_main_2, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void events_init_screen_pic(lv_ui *ui)
+{
+    lv_obj_add_event_cb(ui->screen_pic, screen_pic_event_handler, LV_EVENT_ALL, ui);
+}
+
+void events_init(lv_ui *ui)
+{
+}

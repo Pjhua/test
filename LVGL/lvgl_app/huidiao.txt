@@ -1,0 +1,221 @@
+#include "led.h"
+#include "beep.h"
+#include "relay.h"
+#include "pwm.h"
+#include "w2812.h"
+
+
+static void screen_app_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch(dir) {
+        case LV_DIR_TOP:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_app_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+            w2812_reset();
+			w2812_send_color(RGB_BLACK);
+			break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_roller_fan_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj=lv_event_get_target(e);
+    u8 i;
+    switch (code) {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        i=lv_roller_get_selected(obj);
+        fan_set_gear(i);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led3_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t * status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        LED3=!status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led2_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t * status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        LED2=!status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_led1_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t * status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        LED1=!status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_beep_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t * status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        BEEP=status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_sw_relay_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_t * status_obj = lv_event_get_target(e);
+        int status = lv_obj_has_state(status_obj, LV_STATE_CHECKED) ? true : false;
+        RELAY=status;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+char ang[8]= {0,45,90,135,180};
+static void screen_app_roller_sg90_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj=lv_event_get_target(e);
+
+    switch (code) {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        u8 i=lv_roller_get_selected(obj);
+        sg90_set_angle(ang[i]);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+u8 R=0,G=0,B=0;
+static void screen_app_slider_R_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    switch (code) {
+    case LV_EVENT_RELEASED:
+    {   lv_obj_t * slider = lv_event_get_target(e);
+        R=lv_slider_get_value(slider);
+        printf("R:%d G:%d B:%d\r\n",R,G,B);
+        w2812_write_byte(G);
+        w2812_write_byte(R);
+        w2812_write_byte(B);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_slider_G_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * slider = lv_event_get_target(e);
+    switch (code) {
+    case LV_EVENT_RELEASED:
+    {
+        G=lv_slider_get_value(slider);
+        printf("R:%d G:%d B:%d\r\n",R,G,B);
+        w2812_write_byte(G);
+        w2812_write_byte(R);
+        w2812_write_byte(B);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_slider_B_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * slider = lv_event_get_target(e);
+    switch (code) {
+    case LV_EVENT_RELEASED:
+    {
+        B=lv_slider_get_value(slider);
+        printf("R:%d G:%d B:%d\r\n",R,G,B);
+        w2812_write_byte(G);
+        w2812_write_byte(R);
+        w2812_write_byte(B);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_app_btn_back_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_main_1, guider_ui.screen_main_1_del, &guider_ui.screen_app_del, setup_scr_screen_main_1, LV_SCR_LOAD_ANIM_NONE, 200, 200, true, true);
+        w2812_reset();
+			w2812_send_color(RGB_BLACK);
+		break;
+    }
+    default:
+        break;
+    }
+}
